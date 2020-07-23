@@ -1,13 +1,39 @@
 Void somfy-rts::int(int port){
+port_tx = port;
+DDRD |= 1<<PORT_TX; // set port as output
+  PORTD &= !(1<<PORT_TX); // set port LOW
 
+  if (EEPROM.get(EEPROM_ADDRESS, rollingCode) < newRollingCode) {
+    EEPROM.put(EEPROM_ADDRESS, newRollingCode);
+  }
 }
 
 Void somfy-rts::teachRemote(){
+send(commandTeach);
+}
+
+void somfy-rts::up(){
+send(commandUp);
+}
+
+void somfy-rts::down(){
+send(commandDown);
+}
+
+void somfy-rts::stop(){
+send(commandStop);
+}
+void somfy-rts::getRollingCode(){
 
 }
 
-void somfy-rts::getRollingCode(){
+void somfy-rts::send(byte command){
+BuildFrame(frame, command);
 
+    SendCommand(frame, 2);
+    for(int i = 0; i<2; i++) {
+      SendCommand(frame, 7);
+    }
 }
 
 void somfy-rts::buildFrame(byte *frame, byte button) {
