@@ -1,15 +1,91 @@
-Void somfy-rts::int(){
+Void somfy-rts::int(int port){
 
 }
 
-Void somfy-rts::teachRemote(byte remoteId){
+Void somfy-rts::teachRemote(){
 
 }
 
-void somfy-rts::
+void somfy-rts::getRollingCode(){
 
-Void somfy-rts::send(){
+}
 
+void somfy-rts::buildFrame(byte *frame, byte button) {
+  unsigned int code;
+  EEPROM.get(EEPROM_ADDRESS, code);
+  frame[0] = 0xA7; // Encryption key. Doesn't matter much
+  frame[1] = button << 4;  // Which button did  you press? The 4 LSB will be the checksum
+  frame[2] = code >> 8;    // Rolling code (big endian)
+  frame[3] = code;         // Rolling code
+  frame[4] = REMOTE >> 16; // Remote address
+  frame[5] = REMOTE >>  8; // Remote address
+  frame[6] = REMOTE;       // Remote address
+  
+// Checksum calculation: a XOR of all the nibbles
+  checksum = 0;
+  for(byte i = 0; i < 7; i++) {
+    checksum = checksum ^ frame[i] ^ (frame[i] >> 4);
+  }
+  checksum &= 0b1111; // We keep the last 4 bits only
+
+
+//Checksum integration
+  frame[1] |= checksum; //  If a XOR of all the nibbles is equal to 0, the blinds will
+                        // consider the checksum ok
+
+  
+// Obfuscation: a XOR of all the bytes
+  for(byte i = 1; i < 7; i++) {
+    frame[i] ^= frame[i-1];
+  }
+
+  EEPROM.put(EEPROM_ADDRESS, code + 1); //  We store the value of the rolling code in the
+                                        // EEPROM. It should take up to 2 adresses but the
+                                        // Arduino function takes care of it.
+}
+
+Void somfy-rts::sendCommand(byte *frame, byte sync){
+ if(sync == 2) { // Only with the first frame.
+  //Wake-up pulse & Silence
+    PORTD |= 1<<PORT_TX;
+    delayMicroseconds(9415);
+    PORTD &= !(1<<PORT_TX);
+    delayMicroseconds(89565);
+  }
+
+// Hardware sync: two sync for the first frame, seven for the following ones.
+  for (int i = 0; i < sync; i++) {
+    PORTD |= 1<<PORT_TX;
+    delayMicroseconds(4*SYMBOL);
+    PORTD &= !(1<<PORT_TX);
+    delayMicroseconds(4*SYMBOL);
+  }
+
+// Software sync
+  PORTD |= 1<<PORT_TX;
+  delayMicroseconds(4550);
+  PORTD &= !(1<<PORT_TX);
+  delayMicroseconds(SYMBOL);
+  
+  
+//Data: bits are sent one by one, starting with the MSB.
+  for(byte i = 0; i < 56; i++) {
+    if(((frame[i/8] >> (7 - (i%8))) & 1) == 1) {
+      PORTD &= !(1<<PORT_TX);
+      delayMicroseconds(SYMBOL);
+      PORTD ^= 1<<5;
+      delayMicroseconds(SYMBOL);
+    }
+    else {
+      PORTD |= (1<<PORT_TX);
+      delayMicroseconds(SYMBOL);
+      PORTD ^= 1<<5;
+      delayMicroseconds(SYMBOL);
+    }
+  }
+  
+  PORTD &= !(1<<PORT_TX);
+  delayMicroseconds(30415); // Inter-frame silence
 }
 
 /*   This sketch allows you to emulate a Somfy RTS or Simu HZ remote.
